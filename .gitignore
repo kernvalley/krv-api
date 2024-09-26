@@ -5,6 +5,7 @@
 *.bak
 *.gz
 *.tgz
+.netlify/
 .env
 # Logs
 logs

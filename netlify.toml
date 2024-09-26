@@ -1,0 +1,15 @@
+# https://www.netlify.com/docs/netlify-toml-reference/
+[build]
+  base = "./serve/"
+  publish = "./serve/"
+  # command = "npm run build && npm run build:site"
+  functions = "v1"
+[dev]
+  base = "./serve/"
+  publish = "./serve/"
+  # command = "npm run serve:dev"
+  functions = "v1"
+  targetPort = 8080
+[functions]
+  external_node_modules = []
+  node_bundler = "esbuild"
