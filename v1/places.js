@@ -1,14 +1,9 @@
-import { NOT_FOUND, NOT_IMPLEMENTED } from '@shgysk8zer0/consts/status';
-import { createHandler } from '@shgysk8zer0/lambda-http/handler';
-import { HTTPError } from '@shgysk8zer0/lambda-http/error';
-
-async function handler() {
-	throw new HTTPError('Not yet implemented.', NOT_IMPLEMENTED);
-}
+import { createHandler, HTTPNotFoundError } from '@shgysk8zer0/lambda-http';
 
 export default createHandler({
 	async get(req) {
 		const { searchParams } = new URL(req.url);
+
 		if (! searchParams.has('type')) {
 			return Response.redirect('https://maps.kernvalley.us/places/all.json');
 		} else {
@@ -59,12 +54,10 @@ export default createHandler({
 					return Response.redirect('https://maps.kernvalley.us/places/stores.json');
 
 				default:
-					throw new HTTPError(`No results for ${searchParams.get('type')}`, NOT_FOUND);
+					throw new HTTPNotFoundError(`No results for ${searchParams.get('type')}`);
 			}
 		}
 	},
-	post: handler,
-	delete: handler,
 }, {
 	allowCredentials: true,
 	allowOrigins: ['*'],

@@ -1,7 +1,11 @@
-import { createHandler } from '@shgysk8zer0/lambda-http/handler';
-import { HTTPError } from '@shgysk8zer0/lambda-http/error';
-import { NOT_FOUND, BAD_REQUEST, FORBIDDEN, CREATED, UNAUTHORIZED, NOT_IMPLEMENTED } from '@shgysk8zer0/consts/status';
-import { getFirestore, getRequestUser } from './firebase';
+import {
+	createHandler, HTTPNotImplementedError, HTTPNotFoundError, HTTPBadRequestError, HTTPForbiddenError,
+	HTTPUnauthorizedError
+} from '@shgysk8zer0/lambda-http';
+import { CREATED, FOUND } from '@shgysk8zer0/consts/status';
+import { getFirestore } from './firebase';
+import { verifyJWT, getPublicKey } from '@shgysk8zer0/jwk-utils';
+import { revokedTokens } from './revokedTokens';
 
 function createID({ length = 8, radix = 16, padding = 2 } = {}) {
 	return Array.from(
@@ -16,43 +20,46 @@ export default createHandler({
 
 		if (url.searchParams.has('id')) {
 			const db = await getFirestore();
-			const docRef = db.collection('links').doc(url.searchParams.get('id'));
+			const docRef = db.collection('links').doc(url.searchParams.get('id').trim());
 			const docSnapshot = await docRef.get();
 
 			if (docSnapshot.exists) {
-				const { url, status = 302 } = docSnapshot.data();
+				const { url, status = FOUND } = docSnapshot.data();
 				return Response.redirect(url, status);
 			} else {
-				throw new HTTPError('No URL for request.', NOT_FOUND);
+				throw new HTTPNotFoundError('No URL for request.');
 			}
 		} else {
-			throw new HTTPError('Request missing required id.', BAD_REQUEST);
+			throw new HTTPBadRequestError('Request missing required id.');
 		}
 	},
-	async post(req, context) {
-		if (! (req.headers.has('Authorization') || req.headers.has('Cookie'))) {
-			throw new HTTPError('This requires authentication', UNAUTHORIZED);
+	async post(req) {
+		if (! req.cookies.has('krv-jwt')) {
+			throw new HTTPUnauthorizedError('This requires authentication');
 		} else {
+			const key = await getPublicKey();
+			const { sub, jti } = await verifyJWT(req.cookies.get('krv-jwt'), key, {
+				claims: ['nbf', 'exp', 'jti', 'sub'],
+				entitlements: ['url:create'],
+			});
+
+			if (revokedTokens.has(jti)) {
+				throw new HTTPForbiddenError('Sorry, but that token has been revoked.');
+			}
+
 			const data = await req.json();
 
 			if (typeof data.dest !== 'string' || ! URL.canParse(data.dest)) {
-				throw new HTTPError('Missing or invalid URL.', BAD_REQUEST);
+				throw new HTTPBadRequestError('Missing or invalid URL.');
 			} else {
 				const now = new Date();
-				const user = await getRequestUser(req, context, { requireValidatedEmail: true }).catch(cause => {
-					if (cause instanceof HTTPError) {
-						throw cause;
-					} else {
-						throw new HTTPError('Unable to authenticate user.', FORBIDDEN, { cause });
-					}
-				});
 
 				const firestore = await getFirestore();
 				const collectionRef = firestore.collection('links');
 				const id = createID();
 
 				await collectionRef.doc(id).set({
-					user: user.uid,
+					user: sub,
 					url: data.url,
 					created: now,
 					update: now,
@@ -67,7 +74,7 @@ export default createHandler({
 		}
 	},
 	async delete() {
-		throw new HTTPError('DELETE method not yet implemented.', NOT_IMPLEMENTED);
+		throw new HTTPNotImplementedError('DELETE method not yet implemented.');
 	}
 }, {
 	allowHeaders: ['Authorization'],
